@@ -122,6 +122,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv_market/
 env/
 venv/
 ENV/
@@ -184,3 +185,7 @@ config/secrets.yaml
 tmp/
 temp/
 *.tmp
+
+
+# market_state runtime data (downloaded bars + built features)
+market_state/data/

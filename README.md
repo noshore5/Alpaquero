@@ -5,9 +5,7 @@ A simple algorithmic trading bot built for Alpaca Markets using Python.
 ## Features
 
 - **Real-time Market Data**: Stream live market data from Alpaca
-- **Multiple Trading Strategies**: Implemented strategies include moving average crossover, RSI, and mean reversion
 - **Risk Management**: Built-in position sizing and stop-loss mechanisms
-- **Backtesting**: Test strategies on historical data before live trading
 - **Configuration Management**: Easy-to-configure trading parameters
 - **Logging**: Comprehensive logging for monitoring and debugging
 
@@ -20,12 +18,6 @@ Alpaquero/
 │   ├── config/
 │   │   ├── __init__.py
 │   │   └── settings.py
-│   ├── strategies/
-│   │   ├── __init__.py
-│   │   ├── base_strategy.py
-│   │   ├── moving_average.py
-│   │   ├── rsi_strategy.py
-│   │   └── mean_reversion.py
 │   ├── data/
 │   │   ├── __init__.py
 │   │   └── market_data.py
@@ -38,13 +30,11 @@ Alpaquero/
 │       └── logger.py
 ├── tests/
 │   ├── __init__.py
-│   ├── test_strategies.py
 │   └── test_trader.py
 ├── config/
 │   ├── config.yaml
 │   └── .env.template
 ├── main.py
-├── backtest.py
 ├── requirements.txt
 └── README.md
 ```
@@ -81,25 +71,6 @@ Alpaquero/
 python main.py
 ```
 
-### Backtesting
-```bash
-python backtest.py --strategy moving_average --start 2024-01-01 --end 2024-12-31
-```
-
-## Strategies
-
-### 1. Moving Average Crossover
-- **Buy**: When short MA crosses above long MA
-- **Sell**: When short MA crosses below long MA
-
-### 2. RSI Strategy
-- **Buy**: When RSI < 30 (oversold)
-- **Sell**: When RSI > 70 (overbought)
-
-### 3. Mean Reversion
-- **Buy**: When price is below Bollinger Band lower bound
-- **Sell**: When price is above Bollinger Band upper bound
-
 ## Risk Management
 
 - **Position Sizing**: Configurable percentage of portfolio per trade
@@ -118,28 +89,18 @@ trading:
   stop_loss_pct: 0.05     # 5% stop loss
   take_profit_pct: 0.10   # 10% take profit
   max_positions: 5
-
-strategies:
-  moving_average:
-    short_window: 20
-    long_window: 50
-  rsi:
-    period: 14
-    oversold: 30
-    overbought: 70
 ```
 
 ## Logging
 
 All trading activities are logged with timestamps and details:
 - Trade executions
-- Strategy signals
 - Errors and exceptions
 - Market data updates
 
 ## Disclaimer
 
-This software is for educational purposes only. Trading involves risk of loss. Always test strategies thoroughly in paper trading before using real money.
+This software is for educational purposes only. Trading involves risk of loss. Always test thoroughly in paper trading before using real money.
 
 ## License
 

@@ -166,8 +166,6 @@ def main():
     print("1. Edit .env file with your Alpaca API credentials")
     print("2. Review config/config.yaml for trading parameters")
     print("3. Run: python main.py")
-    print("\nFor backtesting:")
-    print("python backtest.py --strategy moving_average --start 2024-01-01 --end 2024-12-31")
     
     return True
 

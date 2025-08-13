@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, time
 import pytz
 import logging
-from ..strategies.base_strategy import BaseStrategy, Signal
 from ..data.market_data import MarketDataProvider
 from .risk_manager import RiskManager
 
@@ -11,11 +10,9 @@ class AlgoTrader:
     """Main algorithmic trading engine."""
     
     def __init__(self, api_key: str, secret_key: str, base_url: str, 
-                 strategies: List[BaseStrategy], risk_manager: RiskManager,
-                 logger: logging.Logger):
+                 risk_manager: RiskManager, logger: logging.Logger):
         
         self.api = tradeapi.REST(api_key, secret_key, base_url, api_version='v2')
-        self.strategies = strategies
         self.risk_manager = risk_manager
         self.logger = logger
         self.data_provider = MarketDataProvider(self.api, logger)
@@ -88,111 +85,9 @@ class AlgoTrader:
             self.logger.warning(f"Could not get current price for {symbol}")
             return
         
-        # Check each strategy
-        for strategy in self.strategies:
-            if not strategy.config.get('enabled', False):
-                continue
-                
-            # Generate signal
-            signal = strategy.generate_signals(symbol, data, indicators)
-            
-            if signal == Signal.HOLD:
-                continue
-            
-            # Check if we should exit existing positions first
-            if strategy.has_position(symbol):
-                if strategy.should_exit_position(symbol, current_price, 
-                                               strategy.get_position(symbol)):
-                    self._close_position(symbol, strategy)
-                continue
-            
-            # Validate signal
-            if not strategy.validate_signal(symbol, signal, current_price):
-                continue
-            
-            # Calculate position size
-            account = self.api.get_account()
-            portfolio_value = float(account.portfolio_value)
-            quantity = strategy.calculate_position_size(symbol, current_price, portfolio_value)
-            
-            if quantity <= 0:
-                continue
-            
-            # Risk management check
-            cash_balance = float(account.cash)
-            side = 'buy' if signal == Signal.BUY else 'sell'
-            
-            if self.risk_manager.validate_trade(
-                symbol, quantity, current_price, side, 
-                portfolio_value, self.positions, cash_balance
-            ):
-                self._execute_trade(symbol, signal, quantity, strategy)
-    
-    def _execute_trade(self, symbol: str, signal: Signal, quantity: int, 
-                      strategy: BaseStrategy):
-        """Execute a trade."""
-        
-        try:
-            side = 'buy' if signal == Signal.BUY else 'sell'
-            
-            # Submit market order
-            order = self.api.submit_order(
-                symbol=symbol,
-                qty=quantity,
-                side=side,
-                type='market',
-                time_in_force='day'
-            )
-            
-            self.logger.info(f"Order submitted: {side} {quantity} shares of {symbol}")
-            
-            # Track the order
-            self.orders[order.id] = {
-                'symbol': symbol,
-                'strategy': strategy.name,
-                'signal': signal,
-                'quantity': quantity,
-                'order': order
-            }
-            
-            # Update strategy position (assuming fill for now)
-            # In reality, you'd wait for fill confirmation
-            current_price = self.data_provider.get_latest_price(symbol)
-            strategy.update_position(
-                symbol, side, quantity, current_price, 
-                datetime.now().isoformat()
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error executing trade for {symbol}: {e}")
-    
-    def _close_position(self, symbol: str, strategy: BaseStrategy):
-        """Close an existing position."""
-        
-        position = strategy.get_position(symbol)
-        if not position:
-            return
-        
-        try:
-            # Determine close side (opposite of original)
-            close_side = 'sell' if position['side'] == 'long' else 'buy'
-            quantity = position['quantity']
-            
-            order = self.api.submit_order(
-                symbol=symbol,
-                qty=quantity,
-                side=close_side,
-                type='market',
-                time_in_force='day'
-            )
-            
-            self.logger.info(f"Position closed: {close_side} {quantity} shares of {symbol}")
-            
-            # Remove from strategy tracking
-            strategy.close_position(symbol)
-            
-        except Exception as e:
-            self.logger.error(f"Error closing position for {symbol}: {e}")
+        # TODO: Add your trading logic here
+        # This is where you would implement your own strategies
+        self.logger.debug(f"Processed {symbol} at ${current_price:.2f}")
     
     def _update_positions(self):
         """Update current positions from Alpaca."""
@@ -245,10 +140,7 @@ class AlgoTrader:
     
     def get_performance_metrics(self) -> Dict:
         """Get performance metrics."""
-        # This would calculate various performance metrics
-        # For now, return basic info
         return {
-            'active_strategies': len([s for s in self.strategies if s.config.get('enabled')]),
             'total_positions': len(self.positions),
             'pending_orders': len(self.orders)
         }

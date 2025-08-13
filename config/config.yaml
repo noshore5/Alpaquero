@@ -9,23 +9,6 @@ trading:
     end: "16:00"
     timezone: "America/New_York"
 
-strategies:
-  moving_average:
-    enabled: true
-    short_window: 20
-    long_window: 50
-    
-  rsi:
-    enabled: false
-    period: 14
-    oversold: 30
-    overbought: 70
-    
-  mean_reversion:
-    enabled: false
-    period: 20
-    std_dev: 2
-
 risk_management:
   max_portfolio_risk: 0.20  # Maximum 20% of portfolio at risk
   max_position_size: 0.15   # Maximum 15% in single position

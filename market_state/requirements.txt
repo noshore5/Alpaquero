@@ -1,0 +1,19 @@
+# Core scientific / ML
+torch>=2.0
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+pyarrow>=14.0
+scikit-learn>=1.2
+matplotlib>=3.7
+mambapy>=1.2.0
+
+# Data / Alpaca
+alpaca-py>=0.9
+
+# Config / env
+PyYAML>=6.0
+python-dotenv>=1.0
+
+# Dev / test
+pytest>=7.0

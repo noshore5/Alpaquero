@@ -50,7 +50,6 @@ python -c "import alpaca_trade_api; print('✓ Ready to trade!')"
 Edit `config/config.yaml` to:
 - Choose symbols to trade
 - Configure trading parameters
-- Enable/disable strategies
 - Set risk management rules
 
 ## Running
@@ -58,11 +57,6 @@ Edit `config/config.yaml` to:
 **Paper Trading (Safe):**
 ```bash
 python main.py
-```
-
-**Backtesting:**
-```bash
-python backtest.py --strategy moving_average --start 2024-01-01 --end 2024-12-31
 ```
 
 ## Troubleshooting
@@ -74,6 +68,5 @@ python backtest.py --strategy moving_average --start 2024-01-01 --end 2024-12-31
 ## Next Steps
 
 1. Start with paper trading
-2. Test strategies with backtesting
-3. Monitor logs in `logs/trading.log`
-4. Gradually adjust parameters based on performance
+2. Monitor logs in `logs/trading.log`
+3. Gradually adjust parameters based on performance

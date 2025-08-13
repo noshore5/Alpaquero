@@ -79,11 +79,6 @@ class Settings:
         })
     
     @property
-    def strategies(self) -> Dict[str, Any]:
-        """Get strategies configuration."""
-        return self._config.get('strategies', {})
-    
-    @property
     def risk_management(self) -> Dict[str, float]:
         """Get risk management configuration."""
         return self._config.get('risk_management', {})
@@ -97,15 +92,6 @@ class Settings:
     def logging_config(self) -> Dict[str, Any]:
         """Get logging configuration."""
         return self._config.get('logging', {})
-    
-    def get_strategy_config(self, strategy_name: str) -> Dict[str, Any]:
-        """Get configuration for a specific strategy."""
-        return self.strategies.get(strategy_name, {})
-    
-    def is_strategy_enabled(self, strategy_name: str) -> bool:
-        """Check if a strategy is enabled."""
-        strategy_config = self.get_strategy_config(strategy_name)
-        return strategy_config.get('enabled', False)
 
 # Global settings instance
 settings = Settings()

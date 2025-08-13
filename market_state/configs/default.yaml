@@ -1,0 +1,114 @@
+# Market-state model default configuration.
+# All parameters for a run live here; change the universe by editing
+# ``data.symbols``. See README for the pipeline description.
+
+data:
+  timeframe: 5Min          # 1Min | 5Min | 15Min | 1Hour | 1Day
+  start: "2021-01-01"      # UTC
+  end: "2024-12-31"        # UTC (inclusive)
+  raw_dir: "./data/raw"
+  # ~30 representative cross-asset instruments. Universe must be adapted to
+  # what Alpaca actually serves; the downloader reports unavailable symbols
+  # rather than silently dropping them.
+  symbols:
+    # Equities
+    - SPY
+    - QQQ
+    - IWM
+    - DIA
+    - EFA
+    - EEM
+    - FEZ
+    - EWJ
+    - FXI
+    # Rates / fixed income proxies
+    - TLT
+    - IEF
+    - SHY
+    - TIP
+    # Commodities
+    - GLD
+    - SLV
+    - USO
+    - UNG
+    - CPER
+    # FX proxies (liquid USD/FX ETFs)
+    - UUP
+    - FXE
+    - FXY
+    - FXB
+    # Volatility index ETFs
+    - VIXY
+    - VXX
+    # Crypto (Alpaca crypto symbols, continuous trading)
+    - BTC/USD
+    - ETH/USD
+    # Additional broad exposure
+    - VNQ
+    - XLE
+    - XLF
+    - SMH
+
+window:
+  bars: 78                 # lookback in bars; 78 x 5min = 1 trading day
+
+wavelet:
+  name: morlet
+  # Financial periods to resolve, expressed in wall time at the bar interval.
+  # With 5-minute bars these correspond to CWT centre periods of
+  # {3, 6, 12, 24, 48, 96, 288} bars respectively (15m .. 1 day).
+  periods: ["15min", "30min", "1h", "2h", "4h", "8h", "1d"]
+  normalization: log        # log-spaced geometric frequency grid
+  nfreqs: 32               # total CWT scales (>= len(periods)); periods sample these
+  causal: true             # right-zero-pad input + trailing-align to kill future leak
+  # Trailing-support multiplier: causal feature at tau = W(tau - coi_factor*fb*P).
+  # 3.0 = three e-folding half-widths (config default); raise to ~6 for
+  # negligible Gaussian-tail leakage into the future at the cost of more warm-up.
+  coi_factor: 3.0
+
+coherence:
+  method: gaussian_time     # Gaussian smoothing over the time axis only
+  smooth_time_steps: 5      # std of the time-smoothing Gaussian, in bars
+  frequency_reduction: magnitude_weighted   # how WCT freq axis -> graph edge
+  frequency_weights: null   # optional explicit per-bin weights (mean if null)
+
+spectral:
+  n_components: 8          # top-k eigenpairs kept (k <= n_assets)
+  use_eigenvectors: false  # model predominantly uses stable spectral quantities
+  eigenvalue_normalize: trace
+  canonicalize_phase: true # rotate largest-|.| eigenvector component real+ve
+
+model:
+  state_dim: 64            # latent market state z_t dimension
+  d_mode: 32
+  d_freq: 64
+  mamba_layers: 1
+  mamba_d_state: 16
+  mamba_d_conv: 4
+  mamba_expand: 2
+  mamba_dropout: 0.0
+  mamba_backend: mamba3    # mamba3 = complex-diagonal SSM
+  encoder: projector       # gauge-invariant spectral projector encoder
+
+targets:
+  realized_vol_horizons: [5, 12, 78]   # bars; 78x5min = 1 day
+  return_horizons: [5, 12, 78]
+  max_drawdown_horizon: 78
+  correlation_horizon: 78
+  # deterministic regime thresholds on realized-vol over 5 bars
+  regime_thresholds: [0.005, 0.02]
+
+backtest:
+  transaction_cost_bps: 1.0
+  train_bars: 20000
+  validate_bars: 5000
+  test_bars: 2000
+  step_bars: 5000
+  expanding_window: true
+
+inference:
+  device: cpu
+  batch_size: 1
+
+reproducibility:
+  seed: 42
