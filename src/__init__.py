@@ -1,0 +1,1 @@
+# Alpaquero - Simple Algorithmic Trader

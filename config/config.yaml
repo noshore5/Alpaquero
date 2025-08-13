@@ -1,0 +1,41 @@
+trading:
+  symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+  position_size_pct: 0.1  # 10% of portfolio per trade
+  stop_loss_pct: 0.05     # 5% stop loss
+  take_profit_pct: 0.10   # 10% take profit
+  max_positions: 3        # Maximum concurrent positions
+  trading_hours:
+    start: "09:30"
+    end: "16:00"
+    timezone: "America/New_York"
+
+strategies:
+  moving_average:
+    enabled: true
+    short_window: 20
+    long_window: 50
+    
+  rsi:
+    enabled: false
+    period: 14
+    oversold: 30
+    overbought: 70
+    
+  mean_reversion:
+    enabled: false
+    period: 20
+    std_dev: 2
+
+risk_management:
+  max_portfolio_risk: 0.20  # Maximum 20% of portfolio at risk
+  max_position_size: 0.15   # Maximum 15% in single position
+  min_cash_balance: 1000    # Minimum cash to maintain
+
+data:
+  timeframe: "1Min"         # Data timeframe
+  lookback_days: 30         # Days of historical data to load
+
+logging:
+  level: "INFO"
+  file: "logs/trading.log"
+  console: true

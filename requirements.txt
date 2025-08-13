@@ -1,0 +1,24 @@
+# Core dependencies - install these first
+alpaca-trade-api>=3.0.0
+pyyaml>=6.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+schedule>=1.2.0
+
+# Data and analysis - install from conda-forge if possible
+# conda install pandas numpy matplotlib seaborn plotly -c conda-forge
+pandas>=2.0.0
+numpy>=1.20.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Technical analysis - optional, install separately if needed
+# ta-lib>=0.4.25
+
+# Development and testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# WebSocket support (compatible with alpaca-trade-api)
+websockets>=9.0,<11
