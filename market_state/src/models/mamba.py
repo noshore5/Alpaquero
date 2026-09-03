@@ -79,9 +79,11 @@ class _ComplexPScan(torch.autograd.Function):
             A_shift = F.pad(A_t[:, :, 1:], (0, 0, 0, 1)).conj().contiguous()
             _RealPScan.pscan_rev(A_shift, grad)
             G = grad.transpose(2, 1)[:, :L].contiguous()
+            # H and G are [B, L, D, N] here (time on axis 1, already un-padded
+            # to the real length L). gradA_t = conj(H_{t-1}) * G_t.
             gradA = torch.zeros_like(H)
-            gradA[:, :, 1:] = H[:, :, :-1].conj() * G[:, :, 1:]
-            return gradA[:, :, :L], G
+            gradA[:, 1:] = H[:, :-1].conj() * G[:, 1:]
+            return gradA, G
         # sequential backwards
         return _sequential_bwd(A_in, H, grad_in)
 

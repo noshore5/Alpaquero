@@ -1,0 +1,85 @@
+# Crypto-only universe — Binance public data (no API key, 24/7, no session gaps).
+#
+# Rationale: the free Alpaca IEX feed cannot serve the cross-asset equity
+# universe (15-minute historical restriction). Crypto has no such limit. The
+# model is symbol-agnostic — it consumes aligned multi-asset log-returns — so
+# only the universe + a few numeric knobs change vs configs/default.yaml.
+#
+# Run:
+#   ../.venv_market/bin/python scripts/download.py       --config configs/crypto.yaml
+#   ../.venv_market/bin/python scripts/build_features.py  --config configs/crypto.yaml
+#   ../.venv_market/bin/python scripts/run_backtest.py    --config configs/crypto.yaml
+
+data:
+  provider: binance        # routes scripts/download.py to data.binance
+  timeframe: 5Min
+  start: "2021-01-01"
+  end: "2024-12-31"
+  raw_dir: "./data/raw"
+  # 30 liquid Binance USDT spot pairs, all listed on Binance by ~Nov 2020 so
+  # the full [start, end] window has near-complete cross-sectional coverage.
+  # These are the deepest-book names; below ~rank 25 the 1 bp cost assumption
+  # gets optimistic for a 25-minute holding period.
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - BNB/USDT
+    - XRP/USDT
+    - ADA/USDT
+    - DOGE/USDT
+    - SOL/USDT
+    - LTC/USDT
+    - BCH/USDT
+    - LINK/USDT
+    - DOT/USDT
+    - TRX/USDT
+    - AVAX/USDT
+    - ATOM/USDT
+    - UNI/USDT
+    - ETC/USDT
+    - XLM/USDT
+    - FIL/USDT
+    - NEAR/USDT
+    - ALGO/USDT
+    - AAVE/USDT
+    - MKR/USDT
+    - EOS/USDT
+    - XTZ/USDT
+    - THETA/USDT
+    - AXS/USDT
+    - SAND/USDT
+    - MANA/USDT
+    - GRT/USDT
+    - SNX/USDT
+
+window:
+  bars: 288                 # 288 x 5min = 24h (crypto trades round the clock)
+
+# Keep more of the deterministic spectral information (costs ~1% of model
+# params: only the Mamba in_proj widens). n_components 12 of 30 assets, plus
+# the gauge-invariant per-asset projector-diagonal "node loadings".
+#   d_spec = 3*n_components + 4 + n_assets  (eigenvectors on)  = 36 + 4 + 30 = 70
+spectral:
+  n_components: 12
+  use_eigenvectors: true
+  eigenvalue_normalize: trace
+  canonicalize_phase: true
+
+# Crypto realised 5-bar vol runs far hotter than equity ETFs; lift the regime
+# cut points so the classes are not all collapsed into the top bucket.
+targets:
+  realized_vol_horizons: [5, 12, 288]
+  return_horizons: [5, 12, 288]
+  max_drawdown_horizon: 288
+  correlation_horizon: 288
+  regime_thresholds: [0.015, 0.045]
+
+# ~3.9 years of 24/7 5-min bars ≈ 410k rows. Larger folds than the equity
+# default, still ~50 walk-forward steps.
+backtest:
+  transaction_cost_bps: 1.0
+  train_bars: 60000
+  validate_bars: 10000
+  test_bars: 5000
+  step_bars: 10000
+  expanding_window: true

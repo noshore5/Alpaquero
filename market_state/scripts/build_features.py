@@ -31,6 +31,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from config import load_config, config_hash
+from repro import set_seed
 from data.alignment import align_bars
 from transforms.cwt import financial_periods
 from transforms.pipeline import FeaturePipeline, FeaturePipelineConfig
@@ -58,6 +59,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    set_seed(cfg.get("reproducibility", {}).get("seed", 42))
     d = cfg["data"]
     bars = load_raw_bars(d["raw_dir"], d["symbols"], d["timeframe"])
     if not bars:

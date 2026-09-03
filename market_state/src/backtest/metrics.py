@@ -52,16 +52,47 @@ def hit_rate(pred: np.ndarray, true: np.ndarray, direction: bool = True) -> floa
     return float((p[m] == t[m]).mean())
 
 
-def ic( pred: np.ndarray, true: np.ndarray) -> float:
-    """Pearson / Spearman information coefficient between pred and true."""
-    from scipy.stats import pearsonr, spearmanr
-    p = np.asarray(pred, dtype=float).ravel()
-    t = np.asarray(true, dtype=float).ravel()
-    m = np.isfinite(p) & np.isfinite(t) & ~np.isclose(t, 0.0) & ~np.isclose(p, 0.0)
-    if m.sum() < 2:
+def ic(pred: np.ndarray, true: np.ndarray) -> float:
+    """Cross-sectional (rank) IC: per-timestep Spearman across assets, averaged.
+
+    Inputs are ``[B, A]`` per-asset prediction and target series (B decision
+    times, A assets). For each timestep we Spearman-correlate the cross-section
+    of predictions against the cross-section of realized targets, then average
+    over timesteps with at least two finite observations.
+
+    Why not a pooled raveled correlation? Pooling ``[B, A]`` into one vector
+    mixes the cross-sectional and temporal dimensions and lets *between-asset*
+    level offsets (e.g. a randomly-initialised model's per-asset biases, or the
+    always-positive realized-vol target) create a large spurious correlation --
+    exactly the IC~0.5..0.95 artifact seen with a randomly-initialised model.
+    Returning to a per-timestep cross-section removes that contamination and
+    measures the skill the long/short portfolio actually uses (ranking assets
+    at each decision).
+
+    A 1-D input is treated as a single timestep (Spearman over its entries),
+    so ``ic`` also works for a univariate return series.
+    """
+    from scipy.stats import spearmanr
+    p = np.asarray(pred, dtype=float)
+    t = np.asarray(true, dtype=float)
+    p = np.atleast_2d(p)
+    t = np.atleast_2d(t)
+    if p.shape != t.shape:
+        raise ValueError(f"pred/true shape mismatch: {p.shape} vs {t.shape}")
+
+    per_time = np.empty(p.shape[0], dtype=float)
+    for b in range(p.shape[0]):
+        pb = p[b]
+        tb = t[b]
+        m = np.isfinite(pb) & np.isfinite(tb) & ~np.isclose(pb, 0.0) & ~np.isclose(tb, 0.0)
+        if m.sum() >= 2:
+            per_time[b] = spearmanr(pb[m], tb[m])[0]
+        else:
+            per_time[b] = np.nan
+    vals = per_time[np.isfinite(per_time)]
+    if vals.size == 0:
         return float("nan")
-    _, spe = spearmanr(p[m], t[m])
-    return float(spe)
+    return float(np.nanmean(vals))
 
 
 def regime_accuracy(pred: np.ndarray, true: np.ndarray) -> float:

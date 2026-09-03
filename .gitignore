@@ -173,7 +173,12 @@ logs/*.log
 
 # Trading-specific
 backtest_results/
-data/
+/data/
+market_state/data/
+market_state/runs/
+# ...but never the source package market_state/src/data/ (only its .py files)
+!market_state/src/data/
+!market_state/src/data/*.py
 *.csv
 *.json
 
