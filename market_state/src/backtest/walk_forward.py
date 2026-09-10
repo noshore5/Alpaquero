@@ -205,7 +205,7 @@ class TrainingLoop:
         for ep in range(max_epochs):
             train_loss = self._run_epoch(x_train, t_train, batch_size=batch_size,
                                          device=device, rng=rng)
-            vp = _predict(self.model, x_val, device, batch_size=batch_size)
+            vp = _predict(self.model, x_val, device, batch_size=max(batch_size, 32))
             vt = t_val.get(monitor_key)
             val_ic = M.ic(vp[monitor_key], vt) if (vt is not None and monitor_key in vp) else float("nan")
             val_ic = float(val_ic) if val_ic == val_ic else -np.inf
@@ -325,7 +325,7 @@ class WalkForwardRunner:
             self.train_info = {k: v for k, v in info.items() if k != "best_state"}
         self.last_model = model
         self.last_norm = self._norm
-        preds = _predict(model, x_test, self.device, batch_size=self.batch_size)
+        preds = _predict(model, x_test, self.device, batch_size=max(self.batch_size, 32))
         result = FoldResult(fold_idx=fold_idx, preds=preds,
                             target_metrics=self._compute_target_metrics(preds, tb_test),
                             train_info=dict(self.train_info))
