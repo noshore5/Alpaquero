@@ -65,13 +65,14 @@ maxprice_for() {
   esac
 }
 
-JOB="mgsm"; CMD=""; DISK=120; BRANCH=main
+JOB="mgsm"; CMD=""; DISK=120; BRANCH=main; DATA_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --job)    JOB=$2; shift 2;;
     --cmd)    CMD=$2; shift 2;;
     --disk)   DISK=$2; shift 2;;
     --branch) BRANCH=$2; shift 2;;
+    --data)   DATA_KEY=$2; shift 2;;   # features.npz S3 key (default datasets/<job>/features.npz)
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -80,7 +81,7 @@ JOB=$(printf '%s' "$JOB" | tr -c 'A-Za-z0-9._-' '-')
 
 PFX_S3="s3://$BUCKET/checkpoints/$JOB"
 LOG_S3="s3://$BUCKET/exports/mgsm/$JOB"
-DATA_S3="s3://$BUCKET/datasets/$JOB/features.npz"
+DATA_S3="s3://$BUCKET/${DATA_KEY:-datasets/$JOB/features.npz}"
 
 if aws s3 ls "$PFX_S3/DONE" --region $REGION >/dev/null 2>&1; then
   echo ">> $PFX_S3/DONE exists -- run already complete, nothing to launch."
