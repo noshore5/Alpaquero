@@ -65,12 +65,13 @@ maxprice_for() {
   esac
 }
 
-JOB="mgsm"; CMD=""; DISK=120
+JOB="mgsm"; CMD=""; DISK=120; BRANCH=main
 while [ $# -gt 0 ]; do
   case "$1" in
-    --job)  JOB=$2; shift 2;;
-    --cmd)  CMD=$2; shift 2;;
-    --disk) DISK=$2; shift 2;;
+    --job)    JOB=$2; shift 2;;
+    --cmd)    CMD=$2; shift 2;;
+    --disk)   DISK=$2; shift 2;;
+    --branch) BRANCH=$2; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -146,7 +147,7 @@ for c in /opt/pytorch/bin/python /opt/conda/envs/pytorch/bin/python \
 done
 echo "BASEPY=\$BASEPY" >> /root/run.log
 
-git clone -b main "$REPO_URL" /root/repo
+git clone -b $BRANCH "$REPO_URL" /root/repo
 cd /root/repo
 git rev-parse --short HEAD >> /root/run.log
 nvidia-smi >> /root/run.log 2>&1 || echo "NO GPU" >> /root/run.log
