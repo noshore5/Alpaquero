@@ -145,6 +145,10 @@ class SpectralDecomposition:
                  topk_share.unsqueeze(-1)]
 
         if eigvecs is not None and eigvecs.ndim == 3:
+            # NOTE (open, see docs/feature-pipeline-notes.md #3): only gauge-
+            # invariant |u|^2 is used here; the eigenvector *relative phase*
+            # (where lead-lag lives) is discarded. Add phase features as a
+            # second experiment -- it changes d_spec.
             # eigenvector-derived magnitudes only (gauge-invariant |u|^2 sums)
             absu2 = eigvecs.abs() ** 2                              # [T,k,N]
             # per-mode participation / 'node loadings' pooled magnitude:

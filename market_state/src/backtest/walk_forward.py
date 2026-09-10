@@ -44,14 +44,62 @@ def model_forward(model: MarketStateModel, x: torch.Tensor) -> dict[str, torch.T
     return model(x)
 
 
+class WindowView:
+    """Lazy ``[B, W, D]`` window provider over a ``[T, D]`` feature array.
+
+    Materialising every causal window for a multi-year fold is tens of GB
+    (``n_windows * W * D * 4``). This builds only the requested batch on the
+    fly from the decision rows, applying the fold's train-fit normalization.
+    """
+
+    def __init__(self, feats2d: np.ndarray, rows: np.ndarray, window_len: int,
+                 norm: tuple[np.ndarray, np.ndarray] | None = None) -> None:
+        self.feats = feats2d
+        self.rows = np.asarray(rows, dtype=np.int64)
+        self.W = int(window_len)
+        self.norm = norm
+        self._off = np.arange(self.W - 1, -1, -1, dtype=np.int64)
+
+    def __len__(self) -> int:
+        return int(self.rows.size)
+
+    def batch(self, sel: np.ndarray) -> np.ndarray:
+        r = self.rows[sel]
+        win = r[:, None] - self._off[None, :]           # [b, W]
+        x = self.feats[win].astype(np.float32, copy=False)
+        if self.norm is not None:
+            mean, std = self.norm
+            x = (x - mean) / std
+        return x
+
+
+class _ArrayView:
+    """Adapter so an already-materialised ``[B, W, D]`` array quacks like WindowView."""
+
+    def __init__(self, arr: np.ndarray) -> None:
+        self.arr = np.asarray(arr, dtype=np.float32)
+
+    def __len__(self) -> int:
+        return int(self.arr.shape[0])
+
+    def batch(self, sel: np.ndarray) -> np.ndarray:
+        return self.arr[sel]
+
+
+def _asview(x):
+    return x if hasattr(x, "batch") else _ArrayView(x)
+
+
 @torch.no_grad()
-def _predict(model: MarketStateModel, x: np.ndarray, device) -> dict[str, np.ndarray]:
+def _predict(model: MarketStateModel, x, device, batch_size: int = 64) -> dict[str, np.ndarray]:
     model.eval()
     model.to(device)
-    batches = torch.split(torch.as_tensor(x, dtype=torch.float32), 256)
     collected: dict[str, list] = {}
-    for bx in batches:
-        out = model(bx.to(device))
+    view = x if hasattr(x, "batch") else _ArrayView(x)
+    n = len(view)
+    arrays = (view.batch(np.arange(s, min(s + batch_size, n))) for s in range(0, n, batch_size))
+    for bx in arrays:
+        out = model(torch.as_tensor(bx, dtype=torch.float32, device=device))
         for k, v in out.items():
             collected.setdefault(k, []).append(v.detach().cpu().numpy())
     return {k: np.concatenate(v, axis=0) for k, v in collected.items()}
@@ -94,14 +142,14 @@ class TrainingLoop:
             total = loss if total is None else total + loss
         return total
 
-    def _run_epoch(self, x, targets, *, batch_size, device, rng) -> float:
+    def _run_epoch(self, wv: "WindowView", targets, *, batch_size, device, rng) -> float:
         self.model.train()
-        n = x.shape[0]
+        n = len(wv)
         order = rng.permutation(n)
         last = 0.0
         for i in range(0, n, batch_size):
             idx = np.sort(order[i : i + batch_size])
-            bx = torch.as_tensor(x[idx], dtype=torch.float32, device=device)
+            bx = torch.as_tensor(wv.batch(idx), dtype=torch.float32, device=device)
             bt = {k: torch.as_tensor(v[idx], dtype=torch.long if k == "regime" else torch.float32,
                                      device=device) for k, v in targets.items()}
             self.opt.zero_grad()
@@ -113,9 +161,11 @@ class TrainingLoop:
             last = float(loss.item())
         return last
 
-    def fit(self, x: np.ndarray, targets: dict[str, np.ndarray], epochs: int = 1,
+    def fit(self, x, targets: dict[str, np.ndarray], epochs: int = 1,
             batch_size: int = 32, device: str = "cpu", seed: int = 0) -> float:
         self.model.to(device)
+        if not isinstance(x, WindowView):
+            x = _asview(x)
         rng = np.random.default_rng(seed)
         last = 0.0
         for _ in range(epochs):
@@ -137,6 +187,7 @@ class TrainingLoop:
         device: str = "cpu",
         seed: int = 0,
         log: bool = True,
+        stop_flag=None,
     ) -> dict:
         """Train up to ``max_epochs``, keeping the weights with the best
         validation cross-sectional IC on ``monitor_key`` (a ``return_H`` head).
@@ -145,6 +196,7 @@ class TrainingLoop:
         import copy
 
         self.model.to(device)
+        x_train, x_val = _asview(x_train), _asview(x_val)
         rng = np.random.default_rng(seed)
         best_ic = -np.inf
         best_state = copy.deepcopy(self.model.state_dict())
@@ -153,7 +205,7 @@ class TrainingLoop:
         for ep in range(max_epochs):
             train_loss = self._run_epoch(x_train, t_train, batch_size=batch_size,
                                          device=device, rng=rng)
-            vp = _predict(self.model, x_val, device)
+            vp = _predict(self.model, x_val, device, batch_size=batch_size)
             vt = t_val.get(monitor_key)
             val_ic = M.ic(vp[monitor_key], vt) if (vt is not None and monitor_key in vp) else float("nan")
             val_ic = float(val_ic) if val_ic == val_ic else -np.inf
@@ -166,6 +218,11 @@ class TrainingLoop:
                 best_state = copy.deepcopy(self.model.state_dict())
             if ep + 1 >= min_epochs and ep - best_epoch >= patience:
                 break
+            if stop_flag is not None and stop_flag():
+                from .spot import SpotInterrupt
+
+                self.model.load_state_dict(best_state)
+                raise SpotInterrupt(f"stop requested during fold training at epoch {ep}")
         self.model.load_state_dict(best_state)
         return {"best_ic": best_ic if np.isfinite(best_ic) else float("nan"),
                 "best_epoch": best_epoch, "epochs_run": len(history), "history": history,
@@ -193,8 +250,10 @@ class WalkForwardRunner:
         patience: int = 5,
         min_epochs: int = 1,
         seed: int = 0,
+        stop_flag=None,
     ) -> None:
         self.model_factory = model_factory
+        self.stop_flag = stop_flag
         self.features = features
         self.targets = targets
         self.fold = fold
@@ -228,14 +287,8 @@ class WalkForwardRunner:
         # trim to rows where all targets are finite
         targ = {k: self.targets[k] for k in self.targets if self.targets[k].shape[0] == t_total}
         rows = rows[rows < min(arr.shape[0] for arr in targ.values())]
-        W = self.window_len
-        idx = rows[:, None] - np.arange(W - 1, -1, -1)[None, :]
-        x = self.features[idx].astype(np.float32)
-        if self._norm is not None:
-            mean, std = self._norm
-            x = (x - mean) / std
         bt = {k: arr[rows] for k, arr in targ.items()}
-        return x, bt
+        return WindowView(self.features, rows, self.window_len, self._norm), bt
 
     def _fit_normalization(self) -> None:
         self._norm = None
@@ -264,11 +317,12 @@ class WalkForwardRunner:
                 max_epochs=self.epochs, patience=self.patience,
                 min_epochs=self.min_epochs, batch_size=self.batch_size,
                 device=self.device, seed=self.seed + fold_idx,
+                stop_flag=self.stop_flag,
             )
             self.train_info = {k: v for k, v in info.items() if k != "best_state"}
         self.last_model = model
         self.last_norm = self._norm
-        preds = _predict(model, x_test, self.device)
+        preds = _predict(model, x_test, self.device, batch_size=self.batch_size)
         result = FoldResult(fold_idx=fold_idx, preds=preds,
                             target_metrics=self._compute_target_metrics(preds, tb_test),
                             train_info=dict(self.train_info))

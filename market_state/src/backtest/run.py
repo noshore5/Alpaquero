@@ -49,6 +49,10 @@ def run_walk_forward(
     lr: float = 1e-3,
     seed: int = 0,
     save_dir: str | Path | None = None,
+    max_folds: int | None = None,
+    s3_prefix: str | None = None,
+    resume: bool = False,
+    stop_flag=None,
 ) -> WalkForwardReport:
     """Run every fold and collect results.
 
@@ -69,6 +73,8 @@ def run_walk_forward(
         step_bars=int(bt.get("step_bars", 5000)),
         expanding_window=bool(bt.get("expanding_window", True)),
     )
+    if max_folds is not None and max_folds > 0:
+        folds = folds[: int(max_folds)]
     window_len = int(config.get("window", {}).get("bars", 78))
     model_cfg = dict(config.get("model", {}))
     model_cfg["n_assets"] = len(config.get("data", {}).get("symbols", []))
@@ -83,8 +89,34 @@ def run_walk_forward(
     if save_path is not None:
         save_path.mkdir(parents=True, exist_ok=True)
 
+    if resume and save_path is not None and s3_prefix:
+        from .spot import pull_checkpoints
+
+        pull_checkpoints(s3_prefix, save_path)
+
+    def _reconstruct(fi: int, path: Path) -> FoldResult:
+        import torch
+
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        return FoldResult(
+            fold_idx=fi, preds={},
+            target_metrics=dict(ck.get("test_metrics", {})),
+            portfolio_metrics=dict(ck.get("portfolio_metrics", {})),
+            train_info=dict(ck.get("train_info", {})),
+        )
+
+    interrupted = False
     results = []
     for fi, fold in enumerate(folds):
+        ckpt_path = (save_path / f"fold_{fi:03d}.pt") if save_path is not None else None
+        if resume and ckpt_path is not None and ckpt_path.exists():
+            print(f"[run] fold {fi}: checkpoint present, skipping", flush=True)
+            results.append(_reconstruct(fi, ckpt_path))
+            continue
+        if stop_flag is not None and stop_flag():
+            print(f"[run] stop requested before fold {fi}; {len(results)} folds done", flush=True)
+            interrupted = True
+            break
         runner = WalkForwardRunner(
             factory,
             features,
@@ -103,8 +135,18 @@ def run_walk_forward(
             patience=patience,
             min_epochs=min_epochs,
             seed=seed,
+            stop_flag=stop_flag,
         )
-        fr = runner.run_fold(fi)
+        try:
+            fr = runner.run_fold(fi)
+        except Exception as exc:  # noqa: BLE001
+            from .spot import SpotInterrupt
+
+            if isinstance(exc, SpotInterrupt):
+                print(f"[run] {exc}; discarding partial fold {fi}", flush=True)
+                interrupted = True
+                break
+            raise
         results.append(fr)
         if save_path is not None and epochs > 0 and getattr(runner, "last_model", None) is not None:
             import torch
@@ -119,8 +161,13 @@ def run_walk_forward(
                  "train_info": fr.train_info,
                  "test_metrics": fr.target_metrics,
                  "portfolio_metrics": fr.portfolio_metrics},
-                save_path / f"fold_{fi:03d}.pt",
+                ckpt_path,
             )
+            if s3_prefix:
+                from .spot import s3_cp, write_progress
+
+                s3_cp(ckpt_path, s3_prefix.rstrip("/") + f"/fold_{fi:03d}.pt")
+                write_progress(s3_prefix, save_path, fi, len(folds))
 
     rep = WalkForwardReport(fold_results=results, fold_config=bt)
     rep.pooled_metrics = rep.aggregate()
@@ -137,4 +184,11 @@ def run_walk_forward(
             ],
         }
         (save_path / "report.json").write_text(json.dumps(summary, indent=2, default=str))
+        if s3_prefix:
+            from .spot import s3_cp, write_done
+
+            s3_cp(save_path / "report.json", s3_prefix.rstrip("/") + "/report.json")
+            if not interrupted and len(results) == len(folds):
+                write_done(s3_prefix, save_path, status="ok",
+                           msg=f"{len(results)} folds")
     return rep

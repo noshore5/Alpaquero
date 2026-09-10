@@ -59,7 +59,8 @@ wavelet:
   # {3, 6, 12, 24, 48, 96, 288} bars respectively (15m .. 1 day).
   periods: ["15min", "30min", "1h", "2h", "4h", "8h", "1d"]
   normalization: log        # log-spaced geometric frequency grid
-  nfreqs: 32               # total CWT scales (>= len(periods)); periods sample these
+  nfreqs: 30               # CWT scales: dense log-spaced grid between the first
+                           # and last `periods` entry (labels = span, not the grid)
   causal: true             # right-zero-pad input + trailing-align to kill future leak
   # Trailing-support multiplier: causal feature at tau = W(tau - coi_factor*fb*P).
   # 3.0 = three e-folding half-widths (config default); raise to ~6 for

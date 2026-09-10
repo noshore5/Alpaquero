@@ -13,6 +13,9 @@
 data:
   provider: binance        # routes scripts/download.py to data.binance
   timeframe: 5Min
+  cross_sectional_demean: true   # subtract per-bar equal-weight market return
+                                 # before the CWT -> graph encodes residual
+                                 # (idiosyncratic) co-movement, not market beta
   start: "2021-01-01"
   end: "2024-12-31"
   raw_dir: "./data/raw"
@@ -53,7 +56,31 @@ data:
     - SNX/USDT
 
 window:
-  bars: 288                 # 288 x 5min = 24h (crypto trades round the clock)
+  bars: 1152               # 1152 x 5min = 4 days. 288 (1d) held only one cycle
+                           # of the slowest wavelet; 4d gives the sequence model
+                           # several cycles of the multi-day bands to attribute to.
+
+wavelet:
+  name: morlet
+  # Scale span endpoints: 15min .. 2h  (3 .. 24 bars). The slow bands (>~2h)
+  # carried no usable coherence dynamics on this universe -- every pair sits at
+  # |C|~1 there, so they only flattened the market graph. Multi-day structure
+  # is left to the Mamba's window over feature rows, not the wavelet bank.
+  periods: ["15min", "2h"]
+  nfreqs: 24                # ~8 scales/octave over 3 octaves; past the Morlet's
+                            # own ~8% fractional bandwidth more scales just alias
+  causal: true
+  coi_factor: 3.0
+
+coherence:
+  method: gaussian_time
+  smooth_time_steps: 32    # ~1 cycle of the mid bands. At the old default (5)
+                           # the coherence magnitude saturated at ~1 and only the
+                           # relative phase carried information; 32 makes |C| a
+                           # live channel in the Hermitian graph.
+  frequency_reduction: magnitude_weighted
+  diagonal: zero           # H_ii = 0 (was "one"): the identity term dominated
+                           # every eigendecomposition and pinned lambda_1 >> rest
 
 # Keep more of the deterministic spectral information (costs ~1% of model
 # params: only the Mamba in_proj widens). n_components 12 of 30 assets, plus
@@ -74,12 +101,16 @@ targets:
   correlation_horizon: 288
   regime_thresholds: [0.015, 0.045]
 
-# ~3.9 years of 24/7 5-min bars ≈ 410k rows. Larger folds than the equity
-# default, still ~50 walk-forward steps.
+# ~3.9 years of 24/7 5-min bars ≈ 410k rows (~408k feature rows after warm-up).
+# Sliding (not expanding) window: fixed 60k-row train (~200 days) keeps memory
+# bounded on a laptop/MPS and suits the non-stationary intraday regime. With
+# step 15k that is ~22 walk-forward folds.
 backtest:
   transaction_cost_bps: 1.0
   train_bars: 60000
-  validate_bars: 10000
-  test_bars: 5000
-  step_bars: 10000
-  expanding_window: true
+  validate_bars: 8000
+  test_bars: 8000
+  step_bars: 15000
+  expanding_window: false
+  batch_size: 8           # complex parallel scan over W=1152 is the memory
+                          # bottleneck; ~4x the W=288 cost, so half the W=288 batch

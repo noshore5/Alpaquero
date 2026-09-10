@@ -49,7 +49,8 @@ def benchmark(
 
     Returns dict keyed by device with timings (seconds) per operation.
     """
-    periods = financial_periods(config["wavelet"]["periods"], config["data"]["timeframe"])
+    periods = financial_periods(config["wavelet"]["periods"], config["data"]["timeframe"],
+                                config["wavelet"].get("nfreqs"))
     devices = devices or ["cpu"]
     coi = config["wavelet"].get("coi_factor", 3.0)
     smooth = config["wavelet"].get("smooth_time_steps", 5)

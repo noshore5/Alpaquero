@@ -80,9 +80,20 @@ def _log_spaced(lo: float, hi: float, n: int) -> np.ndarray:
     return hi * ratio ** exps
 
 
-def financial_periods(period_labels: list[str], timeframe: str) -> np.ndarray:
-    """Wall-clock period labels -> sorted log-spaced period grid in bars."""
-    return np.array(sorted(period_to_bars(p, timeframe) for p in period_labels))
+def financial_periods(period_labels: list[str], timeframe: str,
+                      nfreqs: int | None = None) -> np.ndarray:
+    """Wall-clock period labels -> sorted period grid in bars.
+
+    ``nfreqs`` (if given and larger than ``len(period_labels)``) expands the
+    named labels into a dense log-spaced grid of ``nfreqs`` periods spanning
+    ``[min label, max label]``. The named labels are only the endpoints /
+    intent; the CWT bank runs at the full ``nfreqs`` resolution. Without it
+    the grid is exactly the named labels (legacy behaviour).
+    """
+    bars = sorted(period_to_bars(p, timeframe) for p in period_labels)
+    if nfreqs is not None and int(nfreqs) > len(bars):
+        return np.sort(_log_spaced(bars[0], bars[-1], int(nfreqs)))
+    return np.array(bars)
 
 
 def trailing_support_bars(periods_bars: np.ndarray, fb: float = MORLET_FB, coi_factor: float = 3.0) -> np.ndarray:

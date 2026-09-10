@@ -194,3 +194,4 @@ temp/
 
 # market_state runtime data (downloaded bars + built features)
 market_state/data/
+.DS_Store

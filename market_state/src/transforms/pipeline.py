@@ -58,6 +58,8 @@ class FeaturePipelineConfig:
     # e-folding half-widths).
     coi_factor: float = 3.0
     use_eigenvectors: bool = False
+    diagonal: str = "one"          # Hermitian-graph self value: "one" | "zero" | "power"
+    verbose: bool = False
 
 
 class FeaturePipeline:
@@ -70,7 +72,7 @@ class FeaturePipeline:
         self.coherence = WaveletCoherence(n_assets, smooth_time_steps=cfg.smooth_time_steps,
                                           device=cfg.device)
         self.hermitian = HermitianGraph(n_assets, frequency_reduction=cfg.frequency_reduction,
-                                        device=cfg.device)
+                                        diagonal=cfg.diagonal, device=cfg.device)
         self.spectral = SpectralDecomposition(
             SpectralConfig(n_components=cfg.n_components,
                            eigenvalue_normalize=cfg.eigenvalue_normalize,
@@ -111,3 +113,56 @@ class FeaturePipeline:
         feats = self.spectral.features(dec["eigenvalues"],
                                        dec["eigenvectors"] if self.cfg.use_eigenvectors else None)
         return feats.cpu().numpy(), int(max_L)
+
+    def compute_chunked(self, log_returns: np.ndarray, chunk_rows: int = 16000) -> tuple[np.ndarray, int]:
+        """Same result as :meth:`compute` but processes the time axis in blocks.
+
+        The intermediate pairwise-coherence tensor is ``[n_pairs, n_freqs, T]``
+        (``n_pairs = N(N-1)/2``); for a multi-year 5-minute universe that is
+        tens of GB and OOMs. This computes the identical causal features by
+        sliding a window of ``chunk_rows`` output rows, each re-processing a
+        leading warm-up of ``pad + l_max`` input bars (discarded) so the causal
+        CWT + one-sided coherence smoothing are fully spun up. Only exact for
+        ``causal=True`` (the acausal path has no bounded dependency).
+        """
+        lr = np.ascontiguousarray(log_returns, dtype=np.float32)
+        A, T = lr.shape
+        if not self.cfg.causal:
+            return self.compute(log_returns)
+        l_max = int(self.bank.l_max)
+        lead = int(self.bank.pad) + l_max + 256
+        out_len = T - l_max
+        if out_len <= 0:
+            raise ValueError(f"series too short: T={T} <= l_max={l_max}")
+        if out_len <= chunk_rows + lead:
+            return self.compute(log_returns)
+
+        periods = self.bank.periods
+        feats_chunks: list[np.ndarray] = []
+        out_pos = 0
+        _n_chunks = -(-out_len // chunk_rows)
+        _ci = 0
+        while out_pos < out_len:
+            out_end = min(out_pos + chunk_rows, out_len)
+            _ci += 1
+            if self.cfg.verbose:
+                print(f"  [pipeline] chunk {_ci}/{_n_chunks}  rows {out_pos}:{out_end}", flush=True)
+            in_s = max(0, out_pos - lead)
+            in_e = min(T, out_end + l_max)
+            sub = torch.from_numpy(lr[:, in_s:in_e]).to(self.cfg.device)
+            bank = MorletCWTBank(periods, sub.shape[1], device=self.cfg.device,
+                                 coi_factor=self.cfg.coi_factor)
+            coeffs, _ = bank.transform_causal(sub)               # [A, F, (in_e-in_s)-l_max]
+            coh = self.coherence(coeffs)
+            H = self.hermitian.build(coh["complex_coherence"], coeffs.shape[-1])
+            dec = self.spectral.decompose(H)
+            f_sub = self.spectral.features(
+                dec["eigenvalues"],
+                dec["eigenvectors"] if self.cfg.use_eigenvectors else None,
+            )
+            # sub-run row k <-> global output row (in_s + k); keep [out_pos, out_end)
+            lo, hi = out_pos - in_s, out_end - in_s
+            feats_chunks.append(f_sub[lo:hi].cpu().numpy())
+            del sub, coeffs, coh, H, dec, f_sub
+            out_pos = out_end
+        return np.concatenate(feats_chunks, axis=0), l_max

@@ -56,6 +56,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=None)
     ap.add_argument("--out", default="data/features")
+    ap.add_argument("--chunk-rows", type=int, default=16000,
+                    help="time-block size for the feature pipeline (caps the "
+                         "[n_pairs, n_freqs, T] coherence tensor memory). 0 = no chunking.")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -75,13 +78,20 @@ def main() -> int:
     # --- features ---
     from data.preprocessing import log_returns
     rets_df = log_returns(prices)
-    lr = np.asarray(rets_df.T, dtype=np.float32)          # [A, T] log returns
+    lr = np.asarray(rets_df.T, dtype=np.float32)          # [A, T] log returns (NaN at gaps)
+    if bool(d.get("cross_sectional_demean", False)):
+        # remove the equal-weight market factor each bar so the coherence graph
+        # encodes RESIDUAL co-movement (which rotates) not the ever-present beta
+        lr = lr - np.nanmean(lr, axis=0, keepdims=True)
+        print("[build] cross-sectional demean: ON (per-bar equal-weight market removed)")
     lr = np.nan_to_num(lr, nan=0.0)                        # gaps explicit-0 for CWT input
     T_full = lr.shape[1]
     A = lr.shape[0]
 
-    periods = financial_periods(cfg["wavelet"]["periods"], d["timeframe"])
     w = cfg["wavelet"]
+    periods = financial_periods(w["periods"], d["timeframe"], w.get("nfreqs"))
+    print(f"[build] CWT scale grid: {len(periods)} periods "
+          f"{periods[0]:.1f}..{periods[-1]:.1f} bars (nfreqs={w.get('nfreqs')})")
     fpc = FeaturePipelineConfig(
         device=cfg["inference"].get("device", "cpu"),
         smooth_time_steps=cfg["coherence"].get("smooth_time_steps", 5),
@@ -92,9 +102,14 @@ def main() -> int:
         causal=bool(w.get("causal", True)),
         coi_factor=float(w.get("coi_factor", 3.0)),
         use_eigenvectors=bool(cfg["spectral"].get("use_eigenvectors", False)),
+        diagonal=cfg["coherence"].get("diagonal", "one"),
+        verbose=True,
     )
     pl = FeaturePipeline(fpc, A, periods, T_full)
-    features, dropped = pl.compute(lr)                    # [T_out, D]
+    if args.chunk_rows and args.chunk_rows > 0:
+        features, dropped = pl.compute_chunked(lr, chunk_rows=args.chunk_rows)
+    else:
+        features, dropped = pl.compute(lr)               # [T_out, D]
     T_out = features.shape[0]
     print(f"[build] features {features.shape}, causal warm-up dropped={dropped}")
 

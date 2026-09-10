@@ -40,6 +40,7 @@ if str(SRC) not in sys.path:
 from config import load_config
 from repro import set_seed
 from backtest.run import run_walk_forward
+from backtest.spot import install_signal_handlers, should_stop
 
 
 def load_features(path: Path):
@@ -61,8 +62,16 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--device", default=None, help="cpu | cuda | mps (default: inference.device)")
     ap.add_argument("--no-normalize", action="store_true")
+    ap.add_argument("--max-folds", type=int, default=None,
+                    help="train only the first N walk-forward folds (quick look)")
     ap.add_argument("--seed", type=int, default=None, help="override reproducibility.seed")
+    ap.add_argument("--s3-prefix", default=None,
+                    help="s3://.../checkpoints/<job> -- push per-fold ckpts + progress.json + DONE")
+    ap.add_argument("--resume", action="store_true",
+                    help="pull existing fold_*.pt from --s3-prefix and skip completed folds")
     args = ap.parse_args()
+
+    install_signal_handlers()
 
     cfg = load_config(args.config)
     seed = set_seed(args.seed if args.seed is not None else cfg.get("reproducibility", {}).get("seed", 42))
@@ -84,7 +93,16 @@ def main() -> int:
         lr=args.lr,
         seed=seed,
         save_dir=args.out,
+        max_folds=args.max_folds,
+        s3_prefix=args.s3_prefix,
+        resume=args.resume,
+        stop_flag=should_stop,
     )
+
+    if should_stop():
+        print("[train] stopped by signal before all folds completed -- no DONE written; "
+              "relaunch with --resume to continue")
+        return 42
 
     n = len(rep.fold_results)
     print(f"\n[train] {n} folds trained; checkpoints + report.json -> {args.out}")

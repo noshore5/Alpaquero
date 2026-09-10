@@ -54,6 +54,7 @@ def _defaults() -> dict[str, Any]:
             "start": "",
             "end": "",
             "raw_dir": "./data/raw",
+            "cross_sectional_demean": False,
         },
         "window": {"bars": 78},
         "wavelet": {
@@ -75,6 +76,7 @@ def _defaults() -> dict[str, Any]:
             "smooth_time_steps": 5,
             "frequency_reduction": "magnitude_weighted",
             "frequency_weights": None,
+            "diagonal": "one",
         },
         "spectral": {
             "n_components": 8,
