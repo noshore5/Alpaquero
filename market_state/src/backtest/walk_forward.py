@@ -251,9 +251,11 @@ class WalkForwardRunner:
         min_epochs: int = 1,
         seed: int = 0,
         stop_flag=None,
+        train_stride: int = 1,
     ) -> None:
         self.model_factory = model_factory
         self.stop_flag = stop_flag
+        self.train_stride = max(1, int(train_stride))
         self.features = features
         self.targets = targets
         self.fold = fold
@@ -308,7 +310,8 @@ class WalkForwardRunner:
         x_test, tb_test = self._windows(self.fold.test)
         model = self.model_factory()
         if self.epochs > 0:
-            x_train, tb_train = self._windows(self.fold.train)
+            tr_rows = self.fold.train[:: self.train_stride]
+            x_train, tb_train = self._windows(tr_rows)
             x_val, tb_val = self._windows(self.fold.validate)
             loop = TrainingLoop(model, lr=self.lr)
             info = loop.fit_early_stop(

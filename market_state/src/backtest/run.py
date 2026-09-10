@@ -136,6 +136,7 @@ def run_walk_forward(
             min_epochs=min_epochs,
             seed=seed,
             stop_flag=stop_flag,
+            train_stride=int(bt.get("train_stride", 1)),
         )
         try:
             fr = runner.run_fold(fi)

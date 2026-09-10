@@ -114,3 +114,7 @@ backtest:
   expanding_window: false
   batch_size: 8           # complex parallel scan over W=1152 is the memory
                           # bottleneck; ~4x the W=288 cost, so half the W=288 batch
+  train_stride: 12        # 1 train window / hour. Adjacent bar-stride windows
+                          # overlap 99.9% and their return_5 targets overlap;
+                          # stride 12 > horizon 5 -> independent samples, 12x
+                          # fewer steps/epoch. val/test stay stride 1.
