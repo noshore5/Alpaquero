@@ -22,18 +22,28 @@ on:
       job:
         description: "Job slug (S3 checkpoint prefix)"
         required: true
-        default: mgsm
+        default: mgsm-shake
         type: string
       cmd:
         description: "Trainer command (cwd=/root/repo). Do NOT add --out/--s3-prefix/--resume."
         required: true
-        default: "python market_state/scripts/train.py --config market_state/configs/crypto.yaml --features /root/features.npz --device cuda --max-epochs 40 --patience 6 --min-epochs 3"
+        default: "python market_state/scripts/train.py --config market_state/configs/crypto.yaml --features /root/features.npz --device cuda --max-folds 4 --max-epochs 20 --patience 5 --min-epochs 3"
         type: string
       reset:
         description: "Clear DONE + keepalive-state before this tick (restart a finished/failed run)"
         required: false
         default: false
         type: boolean
+      data:
+        description: "features.npz S3 key"
+        required: false
+        default: "datasets/mgsm/features.npz"
+        type: string
+      branch:
+        description: "repo branch the box clones"
+        required: false
+        default: "main"
+        type: string
 
 permissions:
   id-token: write
@@ -45,10 +55,13 @@ concurrency:
 
 env:
   BUCKET: noshore-eeg-benchmarks-827938107865
-  DEFAULT_JOB: mgsm
-  DEFAULT_CMD: "python market_state/scripts/train.py --config market_state/configs/crypto.yaml --features /root/features.npz --device cuda --max-epochs 40 --patience 6 --min-epochs 3"
+  # scheduled ticks run the 4-fold SHAKEDOWN. Once it writes DONE the cron goes
+  # idle. For the full ~23-fold run: dispatch with -f job=mgsm -f reset=true and
+  # the full --max-epochs 40 command (no --max-folds), or bump these defaults.
+  DEFAULT_JOB: mgsm-shake
+  DEFAULT_CMD: "python market_state/scripts/train.py --config market_state/configs/crypto.yaml --features /root/features.npz --device cuda --max-folds 4 --max-epochs 20 --patience 5 --min-epochs 3"
   MAX_STALL: "3"
-  MAX_HOURS: "48"
+  MAX_HOURS: "24"
 
 jobs:
   keepalive:
@@ -66,6 +79,8 @@ jobs:
           IN_JOB: ${{ inputs.job }}
           IN_CMD: ${{ inputs.cmd }}
           IN_RESET: ${{ inputs.reset }}
+          IN_DATA: ${{ inputs.data }}
+          IN_BRANCH: ${{ inputs.branch }}
           SNS_TOPIC_ARN: arn:aws:sns:us-east-1:827938107865:eeg-runs
         run: |
           set -euo pipefail
@@ -128,4 +143,6 @@ jobs:
           aws s3 cp /tmp/state.json "$PFX/keepalive-state.json"
 
           echo "launching spot box for $JOB (folds done so far: $EPOCH)"
-          bash market_state/scripts/mgsm-spot-train.sh --job "$JOB" --cmd "$CMD"
+          bash market_state/scripts/mgsm-spot-train.sh --job "$JOB" --cmd "$CMD" \
+            --data "${IN_DATA:-datasets/mgsm/features.npz}" \
+            --branch "${IN_BRANCH:-main}"

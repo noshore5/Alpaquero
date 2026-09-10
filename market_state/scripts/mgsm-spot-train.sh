@@ -44,6 +44,11 @@ CANDIDATES=(
   "g4dn.xlarge:us-east-1c"  "g4dn.xlarge:us-east-1d"   "g4dn.xlarge:us-east-1a"
   "g4dn.xlarge:us-east-1b"  "g4dn.xlarge:us-east-1f"
   "g6.xlarge:us-east-1a"    "g6.xlarge:us-east-1b"     "g6.xlarge:us-east-1c"
+  "g5.2xlarge:us-east-1a"   "g5.2xlarge:us-east-1b"    "g5.2xlarge:us-east-1c"
+  "g5.2xlarge:us-east-1d"   "g5.2xlarge:us-east-1f"
+  "g4dn.2xlarge:us-east-1c" "g4dn.2xlarge:us-east-1d"  "g4dn.2xlarge:us-east-1a"
+  "g4dn.2xlarge:us-east-1b" "g4dn.2xlarge:us-east-1f"
+  "g6.2xlarge:us-east-1a"   "g6.2xlarge:us-east-1b"    "g6.2xlarge:us-east-1c"
 )
 subnet_for() {   # macOS ships bash 3.2 -- no assoc arrays
   case "$1" in
@@ -56,12 +61,15 @@ subnet_for() {   # macOS ships bash 3.2 -- no assoc arrays
     *) echo "unknown AZ $1" >&2; return 1;;
   esac
 }
-maxprice_for() {
+maxprice_for() {   # cap = on-demand rate (you pay the live spot price, always lower)
   case "$1" in
-    g4dn.xlarge) echo 0.526;;
-    g5.xlarge)   echo 1.006;;
-    g6.xlarge)   echo 0.8048;;
-    *)           echo 1.00;;
+    g4dn.xlarge)   echo 0.526;;
+    g4dn.2xlarge)  echo 0.752;;
+    g5.xlarge)     echo 1.006;;
+    g5.2xlarge)    echo 1.212;;
+    g6.xlarge)     echo 0.8048;;
+    g6.2xlarge)    echo 0.9776;;
+    *)             echo 1.50;;
   esac
 }
 
